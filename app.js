@@ -65,56 +65,65 @@ async function fetchGviz(id, sheetName) {
 /* ── Parse BAZA sheet ── */
 async function loadBaza() {
   try {
-    // Fetch all rows from BAZA sheet
-    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:H500`;
+    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:H600`;
     const res = await fetch(url);
     const text = await res.text();
     const json = JSON.parse(text.replace(/^[^\(]+\(/, '').replace(/\);?\s*$/, ''));
     const rows = (json.table && json.table.rows) || [];
 
-    const kirimMap = {}, chiqimMap = {};
+    // Group by year+month
+    const kirimMap = {}, chiqimMap = {}, yearSet = new Set();
 
     for (const row of rows) {
       const cells = row.c || [];
       const tur = (cells[0]?.v || '').toString().trim();
       if (tur !== 'Kirim' && tur !== 'Chiqim') continue;
-
-      // Date cell: "1/1/2026" format
-      const dateVal = cells[1]?.v || cells[1]?.f || '';
-      const dateParts = dateVal.toString().split('/');
-      if (dateParts.length < 2) continue;
-      const month = parseInt(dateParts[0]);
-      if (!month || month < 1 || month > 12) continue;
-
-      // Amount: column H (index 7)
+      const dateVal = (cells[1]?.v || cells[1]?.f || '').toString();
+      const parts = dateVal.split('/');
+      if (parts.length < 3) continue;
+      const month = parseInt(parts[0]);
+      const year  = parseInt(parts[2]);
+      if (!month || month < 1 || month > 12 || !year) continue;
       let amt = cells[7]?.v;
       if (amt == null) continue;
-      amt = Math.abs(parseFloat(String(amt).replace(/[^\d.\-]/g, ''))) || 0;
+      amt = Math.abs(parseFloat(String(amt).replace(/[^\d.\-]/g,''))) || 0;
       if (amt === 0) continue;
-
-      if (tur === 'Kirim') kirimMap[month] = (kirimMap[month]||0) + amt;
-      else chiqimMap[month] = (chiqimMap[month]||0) + amt;
+      const key = year + '-' + String(month).padStart(2,'0');
+      yearSet.add(year);
+      if (tur === 'Kirim') kirimMap[key] = (kirimMap[key]||0) + amt;
+      else chiqimMap[key]  = (chiqimMap[key]||0) + amt;
     }
 
-    // Build ordered arrays — include months that have data
-    const allMonths = [...new Set([...Object.keys(kirimMap), ...Object.keys(chiqimMap)])].map(Number).sort((a,b)=>a-b);
-    if (allMonths.length === 0) return false;
+    if (Object.keys(kirimMap).length === 0) return false;
 
-    const monthNames = ['','Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
-    const monthShort = ['','Yan','Fev','Mar','Apr','May','Iyu','Iyu','Avg','Sen','Okt','Noy','Dek'];
+    // Store raw maps for filtering
+    DATA._raw = { kirimMap, chiqimMap };
+    DATA._years = [...yearSet].sort();
 
-    DATA.months = allMonths.map(m => monthNames[m]);
-    DATA.mo     = allMonths.map(m => monthShort[m]);
-    DATA.kirim  = allMonths.map(m => kirimMap[m]||0);
-    DATA.chiqim = allMonths.map(m => chiqimMap[m]||0);
-    DATA.sof    = allMonths.map((_,i) => DATA.kirim[i] - DATA.chiqim[i]);
+    // Default: show all available data
+    applyFilter(null);
     DATA.lastUpdated = new Date().toLocaleDateString('uz-UZ');
-
     return true;
   } catch(e) {
     console.warn('Sheets fetch failed:', e);
     return false;
   }
+}
+
+const MONTH_NAMES = ['','Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+const MONTH_SHORT = ['','Yan','Fev','Mar','Apr','May','Iyu','Iyu','Avg','Sen','Okt','Noy','Dek'];
+
+function applyFilter(filterYear) {
+  const { kirimMap, chiqimMap } = DATA._raw;
+  const allKeys = [...new Set([...Object.keys(kirimMap), ...Object.keys(chiqimMap)])].sort();
+  const filtered = filterYear
+    ? allKeys.filter(k => k.startsWith(String(filterYear)))
+    : allKeys;
+  DATA.months = filtered.map(k => MONTH_NAMES[parseInt(k.split('-')[1])]);
+  DATA.mo     = filtered.map(k => MONTH_SHORT[parseInt(k.split('-')[1])]);
+  DATA.kirim  = filtered.map(k => kirimMap[k]||0);
+  DATA.chiqim = filtered.map(k => chiqimMap[k]||0);
+  DATA.sof    = DATA.kirim.map((v,i) => v - DATA.chiqim[i]);
 }
 
 /* ── Formatters ── */
@@ -300,6 +309,59 @@ document.getElementById('menu-btn')?.addEventListener('click',()=>document.getEl
   btn?.addEventListener('click',()=>{ document.body.classList.toggle('dark'); localStorage.setItem('theme',document.body.classList.contains('dark')?'dark':'light'); syncIcon(); setTimeout(buildCharts,100); });
 })();
 
+
+/* ── Year filter ── */
+function renderYearFilter() {
+  // Remove existing
+  document.querySelectorAll('.year-filter').forEach(el=>el.remove());
+
+  const years = DATA._years || [];
+  if (years.length === 0) return;
+
+  const allYears = [null, ...years]; // null = hammasi
+  const container = document.createElement('div');
+  container.className = 'year-filter';
+
+  allYears.forEach(y => {
+    const btn = document.createElement('button');
+    btn.textContent = y ? String(y) : 'Hammasi';
+    btn.className = 'year-btn' + (y === DATA._activeYear ? ' active' : (!y && !DATA._activeYear ? ' active' : ''));
+    btn.onclick = () => {
+      DATA._activeYear = y || null;
+      applyFilter(DATA._activeYear);
+      buildTables();
+      updateKPIs();
+      buildCharts();
+      document.querySelectorAll('.year-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    container.appendChild(btn);
+  });
+
+  // Insert after topbar in each section
+  document.querySelectorAll('.section').forEach(sec => {
+    const existing = sec.querySelector('.year-filter');
+    if (!existing) sec.insertBefore(container.cloneNode(true), sec.firstChild);
+  });
+
+  // Re-bind onclick after cloneNode
+  document.querySelectorAll('.year-btn').forEach(btn => {
+    const y = btn.textContent === 'Hammasi' ? null : parseInt(btn.textContent);
+    btn.onclick = () => {
+      DATA._activeYear = y;
+      applyFilter(y);
+      buildTables();
+      updateKPIs();
+      buildCharts();
+      document.querySelectorAll('.year-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.year-btn').forEach(b=>{
+        const by = b.textContent === 'Hammasi' ? null : parseInt(b.textContent);
+        if(by===y) b.classList.add('active');
+      });
+    };
+  });
+}
+
 /* ── Init ── */
 async function init() {
   const ov=document.getElementById('loading-overlay');
@@ -312,6 +374,7 @@ async function init() {
   if(sd) sd.textContent=ok?DATA.lastUpdated:"Statik ma'lumot";
   const hash=(window.location.hash||'#overview').replace('#','');
   go(hash in TITLES?hash:'overview');
+  renderYearFilter();
   buildTables();
   updateKPIs();
   setTimeout(buildCharts,50);
