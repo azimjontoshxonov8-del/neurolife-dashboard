@@ -64,34 +64,7 @@ async function fetchGviz(id, sheetName) {
 
 /* ── Parse BAZA sheet ── */
 async function loadBaza() {
-  try {
-    const t = await fetchGviz(SHEETS.baza, 'BAZA');
-    if (!t || !t.rows) return false;
-    const rows = t.rows;
-    let kirim=[], chiqim=[], sof=[], found=0;
-    for (const row of rows) {
-      const cells = row.c || [];
-      const label = (cells[0]?.v || '').toString().toLowerCase().trim();
-      if (label.includes('kirim') && found===0) {
-        for(let i=1;i<=5;i++) kirim.push(+(cells[i]?.v)||0);
-        found++;
-      } else if (label.includes('chiqim') && found===1) {
-        for(let i=1;i<=5;i++) chiqim.push(+(cells[i]?.v)||0);
-        found++;
-      } else if ((label.includes('sof') || label.includes('foyda')) && found===2) {
-        for(let i=1;i<=5;i++) sof.push(+(cells[i]?.v)||0);
-        found++;
-      }
-      if (found===3) break;
-    }
-    if (kirim.length===5 && kirim.some(v=>v>0)) {
-      DATA.kirim = kirim;
-      DATA.chiqim = chiqim;
-      DATA.sof = sof;
-      DATA.lastUpdated = new Date().toLocaleDateString('uz-UZ');
-      return true;
-    }
-  } catch(e) { console.warn('Sheets fetch failed, using static data:', e); }
+  // Static data used directly — no live fetch needed
   return false;
 }
 
