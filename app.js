@@ -64,8 +64,57 @@ async function fetchGviz(id, sheetName) {
 
 /* ── Parse BAZA sheet ── */
 async function loadBaza() {
-  // Static data used directly — no live fetch needed
-  return false;
+  try {
+    // Fetch all rows from BAZA sheet
+    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:H500`;
+    const res = await fetch(url);
+    const text = await res.text();
+    const json = JSON.parse(text.replace(/^[^\(]+\(/, '').replace(/\);?\s*$/, ''));
+    const rows = (json.table && json.table.rows) || [];
+
+    const kirimMap = {}, chiqimMap = {};
+
+    for (const row of rows) {
+      const cells = row.c || [];
+      const tur = (cells[0]?.v || '').toString().trim();
+      if (tur !== 'Kirim' && tur !== 'Chiqim') continue;
+
+      // Date cell: "1/1/2026" format
+      const dateVal = cells[1]?.v || cells[1]?.f || '';
+      const dateParts = dateVal.toString().split('/');
+      if (dateParts.length < 2) continue;
+      const month = parseInt(dateParts[0]);
+      if (!month || month < 1 || month > 12) continue;
+
+      // Amount: column H (index 7)
+      let amt = cells[7]?.v;
+      if (amt == null) continue;
+      amt = Math.abs(parseFloat(String(amt).replace(/[^\d.\-]/g, ''))) || 0;
+      if (amt === 0) continue;
+
+      if (tur === 'Kirim') kirimMap[month] = (kirimMap[month]||0) + amt;
+      else chiqimMap[month] = (chiqimMap[month]||0) + amt;
+    }
+
+    // Build ordered arrays — include months that have data
+    const allMonths = [...new Set([...Object.keys(kirimMap), ...Object.keys(chiqimMap)])].map(Number).sort((a,b)=>a-b);
+    if (allMonths.length === 0) return false;
+
+    const monthNames = ['','Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+    const monthShort = ['','Yan','Fev','Mar','Apr','May','Iyu','Iyu','Avg','Sen','Okt','Noy','Dek'];
+
+    DATA.months = allMonths.map(m => monthNames[m]);
+    DATA.mo     = allMonths.map(m => monthShort[m]);
+    DATA.kirim  = allMonths.map(m => kirimMap[m]||0);
+    DATA.chiqim = allMonths.map(m => chiqimMap[m]||0);
+    DATA.sof    = allMonths.map((_,i) => DATA.kirim[i] - DATA.chiqim[i]);
+    DATA.lastUpdated = new Date().toLocaleDateString('uz-UZ');
+
+    return true;
+  } catch(e) {
+    console.warn('Sheets fetch failed:', e);
+    return false;
+  }
 }
 
 /* ── Formatters ── */
