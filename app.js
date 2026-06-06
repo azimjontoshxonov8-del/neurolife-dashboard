@@ -13,8 +13,8 @@ const FALLBACK = {
   months: ['Yanvar','Fevral','Mart','Aprel','May'],
   mo:     ['Yan','Fev','Mar','Apr','May'],
   kirim:  [310190100, 306252000, 350960000, 522462000, 438964500],
-  chiqim: [373273152, 319781164, 362011946, 396280170,  84960226],
-  sof:    [-63083052, -13529164, -11051946, 126181830, 354004274],
+  chiqim: [375773152, 319781163, 362011945, 396280170, 84960226],
+  sof:    [-65583052, -13529163, -11051945, 126181829, 354004274],
   services: [
     { name:'LFK',    data:[115716700,141526000,136784000,209352000,208480500], total:811859200 },
     { name:'SIT',    data:[38641000,46280000,59124000,80236000,68952000],      total:293233000 },
@@ -48,7 +48,7 @@ const FALLBACK = {
     hodim:`Hodim ${i+1}`, jami:null,ort:null,plan:null,pct:null,kpi:null,holat:null
   })),
   acc:{ naqd:669893960, firma:279872017 },
-  lastUpdated:'05.06.2026',
+  lastUpdated: '06.06.2026',
 };
 
 let DATA = JSON.parse(JSON.stringify(FALLBACK));
