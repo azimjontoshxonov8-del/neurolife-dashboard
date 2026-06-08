@@ -65,14 +65,21 @@ async function fetchGviz(id, sheetName) {
 /* ── Parse BAZA sheet ── */
 async function loadBaza() {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:H600`;
+    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:L500`;
     const res = await fetch(url);
     const text = await res.text();
-    const json = JSON.parse(text.replace(/^[^\(]+\(/, '').replace(/\);?\s*$/, ''));
+    const json = JSON.parse(text.replace(/^[^\(]+\(/, '').replace(/\);\s*$/, ''));
     const rows = (json.table && json.table.rows) || [];
 
-    // Group by year+month
     const kirimMap = {}, chiqimMap = {}, yearSet = new Set();
+
+    function parseUZS(cell) {
+      if (!cell || cell.v == null) return 0;
+      let s = String(cell.f || cell.v || '');
+      s = s.replace(/[\s\u00a0]/g,'').replace(/,(\d{3})/g,'$1').replace(/,/g,'.').replace(/[^\d.\-]/g,'');
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : Math.abs(n);
+    }
 
     for (const row of rows) {
       const cells = row.c || [];
@@ -80,27 +87,23 @@ async function loadBaza() {
       if (tur !== 'Kirim' && tur !== 'Chiqim') continue;
       const dateVal = (cells[1]?.v || cells[1]?.f || '').toString();
       const parts = dateVal.split('/');
-      if (parts.length < 3) continue;
+      if (parts.length < 2) continue;
       const month = parseInt(parts[0]);
-      const year  = parseInt(parts[2]);
-      if (!month || month < 1 || month > 12 || !year) continue;
-      let amt = cells[7]?.v;
-      if (amt == null) continue;
-      amt = Math.abs(parseFloat(String(amt).replace(/[^\d.\-]/g,''))) || 0;
+      const year  = parts.length >= 3 ? parseInt(parts[2]) : 2026;
+      if (!month || month < 1 || month > 12) continue;
+      let amt = parseUZS(cells[7]);
+      if (amt === 0) amt = parseUZS(cells[4]);
       if (amt === 0) continue;
       const key = year + '-' + String(month).padStart(2,'0');
       yearSet.add(year);
       if (tur === 'Kirim') kirimMap[key] = (kirimMap[key]||0) + amt;
-      else chiqimMap[key]  = (chiqimMap[key]||0) + amt;
+      else chiqimMap[key] = (chiqimMap[key]||0) + amt;
     }
 
-    if (Object.keys(kirimMap).length === 0) return false;
-
-    // Store raw maps for filtering
+    if (Object.keys(kirimMap).length === 0 && Object.keys(chiqimMap).length === 0) return false;
     DATA._raw = { kirimMap, chiqimMap };
     DATA._years = [...yearSet].sort();
-
-    // Default: show all available data
+    DATA._activeYear = null;
     applyFilter(null);
     DATA.lastUpdated = new Date().toLocaleDateString('uz-UZ');
     return true;
