@@ -65,7 +65,7 @@ async function fetchGviz(id, sheetName) {
 /* ── Parse BAZA sheet ── */
 async function loadBaza() {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:L500`;
+    const url = `https://docs.google.com/spreadsheets/d/${SHEETS.baza}/gviz/tq?tqx=out:json&sheet=BAZA&range=A1:L1000`;
     const res = await fetch(url);
     const text = await res.text();
     const json = JSON.parse(text.replace(/^[^\(]+\(/, '').replace(/\);\s*$/, ''));
@@ -73,27 +73,25 @@ async function loadBaza() {
 
     const kirimMap = {}, chiqimMap = {}, yearSet = new Set();
 
-    function parseUZS(cell) {
-      if (!cell || cell.v == null) return 0;
-      let s = String(cell.f || cell.v || '');
-      s = s.replace(/[\s\u00a0]/g,'').replace(/,(\d{3})/g,'$1').replace(/,/g,'.').replace(/[^\d.\-]/g,'');
-      const n = parseFloat(s);
-      return isNaN(n) ? 0 : Math.abs(n);
-    }
-
     for (const row of rows) {
       const cells = row.c || [];
       const tur = (cells[0]?.v || '').toString().trim();
       if (tur !== 'Kirim' && tur !== 'Chiqim') continue;
-      const dateVal = (cells[1]?.v || cells[1]?.f || '').toString();
-      const parts = dateVal.split('/');
-      if (parts.length < 2) continue;
-      const month = parseInt(parts[0]);
-      const year  = parts.length >= 3 ? parseInt(parts[2]) : 2026;
-      if (!month || month < 1 || month > 12) continue;
-      let amt = parseUZS(cells[7]);
-      if (amt === 0) amt = parseUZS(cells[4]);
+
+      // gviz date format: "Date(2026,0,1)" — month is 0-based!
+      const dateVal = (cells[1]?.v || '').toString();
+      const dateMatch = dateVal.match(/Date\((\d+),(\d+),(\d+)\)/);
+      if (!dateMatch) continue;
+      const year  = parseInt(dateMatch[1]);
+      const month = parseInt(dateMatch[2]) + 1; // convert 0-based to 1-based
+      if (month < 1 || month > 12) continue;
+
+      // H column (index 7) = Jami summasi UZS — already a clean number in gviz
+      let amt = cells[7]?.v;
+      if (amt == null || amt === '') amt = cells[4]?.v; // fallback to E
+      amt = Math.abs(parseFloat(amt) || 0);
       if (amt === 0) continue;
+
       const key = year + '-' + String(month).padStart(2,'0');
       yearSet.add(year);
       if (tur === 'Kirim') kirimMap[key] = (kirimMap[key]||0) + amt;
